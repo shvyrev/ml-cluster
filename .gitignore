@@ -1,0 +1,30 @@
+# Переменные окружения с паролями
+.env
+
+# Временные файлы кластера
+k8s/07-microservices-ingress.yaml
+k8s/templates/
+
+# Логи
+*.log
+
+# Резервные копии
+backup.sql
+*.backup
+
+# Временные файлы
+*.tmp
+*.temp
+
+# macOS
+.DS_Store
+
+# IDE
+.vscode/
+.idea/
+*.swp
+*.swo
+
+# Kubernetes configs
+kubeconfig*
+!kubeconfig.example 

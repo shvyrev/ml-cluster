@@ -1,0 +1,10 @@
+#!/bin/bash
+
+k3d cluster delete ml-cluster
+# Затем выполните команду создания кластера из предыдущего ответа
+k3d cluster create ml-cluster \
+  --servers 1 \
+  --agents 1 \
+  --port 4200:80@loadbalancer \
+  --registry-use k3d-ml-registry:5050 \
+  --registry-config registries.yaml
