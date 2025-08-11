@@ -10,8 +10,6 @@ NC='\033[0m' # No Color
 
 # Конфигурация
 CLUSTER_NAME="ml-cluster"
-REGISTRY_NAME="image-registry"
-REGISTRY_PORT="5050"
 NAMESPACE="model-registry"
 MODELMESH_NAMESPACE="modelmesh-serving"
 
@@ -26,6 +24,7 @@ warn() {
 
 error() {
     echo -e "${RED}[ERROR]${NC} $1"
+    exit 1
 }
 
 # Функция проверки готовности подов
@@ -35,7 +34,7 @@ wait_for_pods() {
     
     log "Ожидание готовности подов в namespace: $namespace"
     
-    if ! kubectl wait --for=condition=ready pod --all -n $namespace --timeout=${timeout}s; then
+    if ! kubectl wait --for=condition=ready pod --all -n "$namespace" --timeout=${timeout}s; then
         error "Тайм-аут ожидания готовности подов в namespace: $namespace"
         return 1
     fi
@@ -65,13 +64,13 @@ create_secrets() {
     
     # Создание секретов
     kubectl create secret generic model-registry-secrets \
-        --namespace=$NAMESPACE \
+        --namespace="$NAMESPACE" \
         --from-literal=POSTGRES_USER=admin \
-        --from-literal=POSTGRES_PASSWORD=$POSTGRES_PASSWORD \
+        --from-literal=POSTGRES_PASSWORD="$POSTGRES_PASSWORD" \
         --from-literal=POSTGRES_DB=model_registry_db \
-        --from-literal=MINIO_ACCESS_KEY=$MINIO_ACCESS_KEY \
-        --from-literal=MINIO_SECRET_KEY=$MINIO_SECRET_KEY \
-        --from-literal=KEYCLOAK_CLIENT_SECRET=$KEYCLOAK_CLIENT_SECRET \
+        --from-literal=MINIO_ACCESS_KEY="$MINIO_ACCESS_KEY" \
+        --from-literal=MINIO_SECRET_KEY="$MINIO_SECRET_KEY" \
+        --from-literal=KEYCLOAK_CLIENT_SECRET="$KEYCLOAK_CLIENT_SECRET" \
         --dry-run=client -o yaml | kubectl apply -f -
     
     # Сохранение паролей в файл для справки
@@ -95,9 +94,8 @@ check_dependencies() {
     log "Проверка зависимостей..."
     
     for cmd in k3d kubectl docker; do
-        if ! command -v $cmd &> /dev/null; then
+        if ! command -v "$cmd" &> /dev/null; then
             error "$cmd не найден. Установите его перед продолжением."
-            exit 1
         fi
     done
     
@@ -109,35 +107,20 @@ cleanup() {
     log "Очистка предыдущих ресурсов..."
     
     # Удаление кластера если существует
-    if k3d cluster list | grep -q $CLUSTER_NAME; then
+    if k3d cluster list | grep -q "$CLUSTER_NAME"; then
         warn "Удаление существующего кластера $CLUSTER_NAME"
-        k3d cluster delete $CLUSTER_NAME
+        k3d cluster delete "$CLUSTER_NAME"
     fi
-    
-    # Удаление registry если существует
-    if k3d registry list | grep -q $REGISTRY_NAME; then
-        warn "Удаление существующего registry $REGISTRY_NAME"
-        k3d registry delete $REGISTRY_NAME
-    fi
-}
-
-# Создание registry
-create_registry() {
-    log "Создание registry..."
-    k3d registry create $REGISTRY_NAME --port $REGISTRY_PORT
-    log "Registry создан: k3d-$REGISTRY_NAME:$REGISTRY_PORT"
 }
 
 # Создание кластера
 create_cluster() {
     log "Создание кластера k3d..."
     
-    k3d cluster create $CLUSTER_NAME \
+    k3d cluster create "$CLUSTER_NAME" \
         --servers 2 \
         --agents 2 \
-        --port 4200:80@loadbalancer \
-        --registry-use k3d-$REGISTRY_NAME:$REGISTRY_PORT \
-        --registry-config registries.yaml \
+        --port 80:80@loadbalancer \
         --wait
     
     log "Кластер $CLUSTER_NAME создан"
@@ -166,15 +149,11 @@ deploy_manifests() {
 install_modelmesh() {
     log "Установка ModelMesh Serving..."
     
-    # Применение CRD и основных компонентов
-    # kubectl apply -f modelmesh-serving/config/crd/
-    # kubectl apply -f modelmesh-serving/config/default/
-    
     log "Создание namespace для ModelMesh если не существует"
-    kubectl create namespace $MODELMESH_NAMESPACE --dry-run=client -o yaml | kubectl apply -f -
+    kubectl create namespace "$MODELMESH_NAMESPACE" --dry-run=client -o yaml | kubectl apply -f -
 
     cd modelmesh-serving
-    ./scripts/install.sh --namespace modelmesh-serving --quickstart --enable-self-signed-ca
+    ./scripts/install.sh --namespace "$MODELMESH_NAMESPACE" --quickstart --enable-self-signed-ca
     cd ..
     
     log "ModelMesh Serving установлен"
@@ -185,17 +164,17 @@ check_services() {
     log "Проверка готовности сервисов..."
     
     # Ожидание готовности основных сервисов
-    wait_for_pods $NAMESPACE 300
+    wait_for_pods "$NAMESPACE" 300
     
     # Проверка доступности сервисов
     log "Проверка доступности PostgreSQL..."
-    kubectl exec -n $NAMESPACE deployment/postgres -- pg_isready -U admin
+    kubectl exec -n "$NAMESPACE" deployment/postgres -- pg_isready -U admin
     
     log "Проверка доступности MinIO..."
-    kubectl exec -n $NAMESPACE deployment/minio -- mc --version > /dev/null
+    kubectl exec -n "$NAMESPACE" deployment/minio -- mc --version > /dev/null
     
     log "Проверка готовности Keycloak..."
-    if ! kubectl wait --for=condition=ready pod -n $NAMESPACE -l app=keycloak --timeout=300s; then
+    if ! kubectl wait --for=condition=ready pod -n "$NAMESPACE" -l app=keycloak --timeout=300s; then
         warn "Keycloak не готов после 300 секунд ожидания, но развертывание продолжается"
     else
         log "Keycloak готов к работе"
@@ -209,8 +188,7 @@ show_cluster_info() {
     log "Информация о кластере:"
     echo ""
     echo "Кластер: $CLUSTER_NAME"
-    echo "Registry: k3d-$REGISTRY_NAME:$REGISTRY_PORT"
-    echo "Loadbalancer: http://localhost:4200"
+    echo "Loadbalancer: http://localhost:80"
     echo ""
     echo "Доступные сервисы:"
     echo "- PostgreSQL: kubectl port-forward -n $NAMESPACE svc/postgres 5432:5432"
@@ -232,7 +210,6 @@ main() {
     
     check_dependencies
     cleanup
-    create_registry
     create_cluster
     deploy_manifests
     install_modelmesh
@@ -243,4 +220,4 @@ main() {
 }
 
 # Запуск
-main "$@" 
+main "$@"

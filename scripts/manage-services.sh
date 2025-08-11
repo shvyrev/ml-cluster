@@ -301,9 +301,9 @@ show_services_status() {
     
     echo ""
     echo "Доступные эндпоинты:"
-    echo "- Service 1: http://localhost:4200/api/v1/service1"
-    echo "- Service 2: http://localhost:4200/api/v1/service2"
-    echo "- Service 3: http://localhost:4200/api/v1/service3"
+    echo "- Service 1: http://localhost/api/v1/service1"
+    echo "- Service 2: http://localhost/api/v1/service2"
+    echo "- Service 3: http://localhost/api/v1/service3"
 }
 
 # Показать помощь
