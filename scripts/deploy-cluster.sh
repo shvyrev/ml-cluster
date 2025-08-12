@@ -24,6 +24,11 @@ MODEL_REGISTRY_BRANCH="dev"
 MODEL_REGISTRY_DIR="ml-platform"
 MODEL_REGISTRY_IMAGE="model-registry:1.0.0"
 
+ARTIFACT_STORE_REPO="git@github.com:shvyrev/artifact-store.git"
+ARTIFACT_STORE_BRANCH="AIPLT-49"
+ARTIFACT_STORE_DIR="artifact-store"
+ARTIFACT_STORE_IMAGE="artifact-store:1.0.0"
+
 # --- Functions ---
 
 log() {
@@ -41,7 +46,7 @@ error() {
 
 check_dependencies() {
     log "Проверка зависимостей..."
-    for cmd in k3d kubectl docker git mvn; do
+    for cmd in k3d kubectl docker git mvn jq; do
         if ! command -v "$cmd" &> /dev/null; then
             error "$cmd не найден. Установите его перед продолжением."
         fi
@@ -51,6 +56,7 @@ check_dependencies() {
 
 cleanup() {
     log "Очистка предыдущих ресурсов..."
+    rm -rf resource-manager ml-platform artifact-store
     if k3d cluster list | grep -q "$CLUSTER_NAME"; then
         warn "Удаление существующего кластера $CLUSTER_NAME"
         k3d cluster delete "$CLUSTER_NAME"
@@ -62,6 +68,10 @@ cleanup() {
     if [ -d "$MODEL_REGISTRY_DIR" ]; then
         warn "Удаление клонированного репозитория $MODEL_REGISTRY_DIR"
         rm -rf "$MODEL_REGISTRY_DIR"
+    fi
+    if [ -d "$ARTIFACT_STORE_DIR" ]; then
+        warn "Удаление клонированного репозитория $ARTIFACT_STORE_DIR"
+        rm -rf "$ARTIFACT_STORE_DIR"
     fi
 }
 
@@ -123,6 +133,30 @@ clone_and_build_model_registry() {
     cd ..
 }
 
+clone_and_build_artifact_store() {
+    log "Клонирование репозитория $ARTIFACT_STORE_REPO..."
+    git clone --branch "$ARTIFACT_STORE_BRANCH" "$ARTIFACT_STORE_REPO"
+    
+    log "Переход в директорию $ARTIFACT_STORE_DIR..."
+    cd "$ARTIFACT_STORE_DIR"
+    
+    log "Сборка Docker-образа artifact-store..."
+    mvn clean package -DskipTests
+    docker build -f src/main/docker/Dockerfile.jvm -t "$ARTIFACT_STORE_IMAGE" .
+    
+    if [ $? -ne 0 ]; then
+        error "Ошибка при сборке Docker-образа."
+    fi
+    
+    log "Образ $ARTIFACT_STORE_IMAGE успешно собран."
+    
+    log "Импорт образа в кластер k3d..."
+    k3d image import "$ARTIFACT_STORE_IMAGE" -c "$CLUSTER_NAME"
+    
+    log "Возврат в корневую директорию..."
+    cd ..
+}
+
 deploy_core_manifests() {
     log "Развертывание основных манифестов..."
     kubectl apply -f k8s/00-namespace.yaml
@@ -143,6 +177,26 @@ deploy_model_registry() {
     log "Развертывание манифестов model-registry..."
     kubectl apply -f "$MODEL_REGISTRY_DIR/k3s/"
     log "Манифесты model-registry применены."
+}
+
+deploy_artifact_store() {
+    log "Развертывание манифестов artifact-store..."
+    kubectl apply -f "$ARTIFACT_STORE_DIR/k3s/"
+    log "Манифесты artifact-store применены."
+}
+
+copy_artifact_store_secrets() {
+    log "Копирование секретов для artifact-store..."
+    # Копируем секрет из model-registry в artifact-store namespace
+    # Предполагаем, что namespace artifact-store уже создан
+    kubectl get secret model-registry-secrets -n model-registry -o json | \
+        jq '
+            .metadata.namespace = "artifact-store" |
+            .metadata.name = "artifact-store-secrets" |
+            del(.metadata.resourceVersion, .metadata.uid, .metadata.creationTimestamp, .metadata.managedFields)
+        ' | \
+        kubectl apply -f -
+    log "Секреты успешно скопированы и применены в namespace artifact-store."
 }
 
 create_secrets() {
@@ -212,6 +266,9 @@ check_services() {
         log "Keycloak готов к работе"
     fi
     
+    # Дополнительная проверка готовности сервисов artifact-store
+    log "Проверка готовности artifact-store..."
+    wait_for_pods "artifact-store" 300
     log "Все сервисы готовы к работе"
 }
 
@@ -246,12 +303,15 @@ main() {
     
     clone_and_build_resource_manager
     clone_and_build_model_registry
+    clone_and_build_artifact_store
     
     deploy_core_manifests
     create_secrets
     deploy_resource_manager
     deploy_model_registry
+    deploy_artifact_store
     
+    copy_artifact_store_secrets
     install_modelmesh
     check_services
     show_cluster_info
