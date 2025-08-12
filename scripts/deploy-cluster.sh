@@ -185,18 +185,40 @@ deploy_artifact_store() {
     log "Манифесты artifact-store применены."
 }
 
-copy_artifact_store_secrets() {
-    log "Копирование секретов для artifact-store..."
-    # Копируем секрет из model-registry в artifact-store namespace
-    # Предполагаем, что namespace artifact-store уже создан
-    kubectl get secret model-registry-secrets -n model-registry -o json | \
-        jq '
-            .metadata.namespace = "artifact-store" |
-            .metadata.name = "artifact-store-secrets" |
-            del(.metadata.resourceVersion, .metadata.uid, .metadata.creationTimestamp, .metadata.managedFields)
-        ' | \
-        kubectl apply -f -
-    log "Секреты успешно скопированы и применены в namespace artifact-store."
+create_artifact_store_secrets() {
+    log "Создание секретов для artifact-store..."
+
+    # Проверяем, существует ли namespace 'artifact-store', и если нет, создаем его
+    if ! kubectl get namespace artifact-store &> /dev/null; then
+        log "Создание namespace 'artifact-store'..."
+        kubectl create namespace artifact-store
+    fi
+
+    # Получаем секреты MinIO и Keycloak из model-registry
+    log "Получение секретов MinIO и Keycloak из namespace 'model-registry'..."
+    MINIO_ACCESS_KEY=$(kubectl get secret model-registry-secrets -n "$NAMESPACE" -o jsonpath='{.data.MINIO_ACCESS_KEY}' | base64 --decode)
+    MINIO_SECRET_KEY=$(kubectl get secret model-registry-secrets -n "$NAMESPACE" -o jsonpath='{.data.MINIO_SECRET_KEY}' | base64 --decode)
+    KEYCLOAK_CLIENT_SECRET=$(kubectl get secret model-registry-secrets -n "$NAMESPACE" -o jsonpath='{.data.KEYCLOAK_CLIENT_SECRET}' | base64 --decode)
+    
+    # Генерируем новые пароли для PostgreSQL
+    log "Генерация новых секретов для PostgreSQL..."
+    POSTGRES_USER="admin"
+    POSTGRES_DB="artifact_store_db"
+    POSTGRES_PASSWORD=$(openssl rand -base64 32 | tr -d "=+/" | cut -c1-25)
+
+    # Создаем новый секрет для artifact-store
+    log "Создание секрета 'artifact-store-secrets' в namespace 'artifact-store'..."
+    kubectl create secret generic artifact-store-secrets \
+        --namespace=artifact-store \
+        --from-literal=MINIO_ACCESS_KEY="$MINIO_ACCESS_KEY" \
+        --from-literal=MINIO_SECRET_KEY="$MINIO_SECRET_KEY" \
+        --from-literal=POSTGRES_USER="$POSTGRES_USER" \
+        --from-literal=POSTGRES_DB="$POSTGRES_DB" \
+        --from-literal=POSTGRES_PASSWORD="$POSTGRES_PASSWORD" \
+        --from-literal=KEYCLOAK_CLIENT_SECRET="$KEYCLOAK_CLIENT_SECRET" \
+        --dry-run=client -o yaml | kubectl apply -f -
+        
+    log "Секреты для artifact-store успешно созданы."
 }
 
 create_secrets() {
@@ -311,7 +333,7 @@ main() {
     deploy_model_registry
     deploy_artifact_store
     
-    copy_artifact_store_secrets
+    create_artifact_store_secrets
     install_modelmesh
     check_services
     show_cluster_info
