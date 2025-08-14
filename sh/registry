@@ -1,3 +1,0 @@
-#!/bin/bash
-
-k3d registry create ml-registry --port 5050

@@ -21,7 +21,7 @@ RESOURCE_MANAGER_DIR="resource-manager"
 RESOURCE_MANAGER_IMAGE="resource-manager:1.0.0"
 
 MODEL_REGISTRY_REPO="git@github.com:shvyrev/ml-platform.git"
-MODEL_REGISTRY_BRANCH="dev"
+MODEL_REGISTRY_BRANCH="AIPLT-49"
 MODEL_REGISTRY_DIR="ml-platform"
 MODEL_REGISTRY_IMAGE="model-registry:1.0.0"
 
@@ -197,8 +197,9 @@ create_resource_manager_secrets() {
 
     # Получаем секреты MinIO из model-registry
     log "Получение секретов MinIO из namespace 'model-registry'..."
-    MODEL_REGISTRY_MINIO_ACCESS_KEY=$(kubectl get secret model-registry-secrets -n "$NAMESPACE" -o jsonpath='{.data.MODEL_REGISTRY_MINIO_ACCESS_KEY}' | base64 --decode)
-    MODEL_REGISTRY_MINIO_SECRET_KEY=$(kubectl get secret model-registry-secrets -n "$NAMESPACE" -o jsonpath='{.data.MODEL_REGISTRY_MINIO_SECRET_KEY}' | base64 --decode)
+    # Исправлено: используем правильные имена ключей (MINIO_ACCESS_KEY)
+    MODEL_REGISTRY_MINIO_ACCESS_KEY=$(kubectl get secret model-registry-secrets -n "$NAMESPACE" -o jsonpath='{.data.MINIO_ACCESS_KEY}' | base64 --decode)
+    MODEL_REGISTRY_MINIO_SECRET_KEY=$(kubectl get secret model-registry-secrets -n "$NAMESPACE" -o jsonpath='{.data.MINIO_SECRET_KEY}' | base64 --decode)
 
     # Получаем секреты MinIO из artifact-store
     log "Получение секретов MinIO из namespace 'artifact-store'..."
@@ -367,13 +368,14 @@ main() {
     clone_and_build_artifact_store
     
     deploy_core_manifests
-    create_secrets
+    create_secrets # Создание секрета для model-registry
+    create_artifact_store_secrets
+    create_resource_manager_secrets # Создание секрета для resource-manager
+    
     deploy_resource_manager
     deploy_model_registry
     deploy_artifact_store
     
-    create_artifact_store_secrets
-    create_resource_manager_secrets
     install_modelmesh
     check_services
     show_cluster_info
