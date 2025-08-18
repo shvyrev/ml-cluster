@@ -1,0 +1,9 @@
+{
+    "type": "s3",
+    "access_key_id": "admin",
+    "secret_access_key": "8zcHWcPHHVZNUXPKzj9zpqghf",
+    "endpoint_url": "http://minio.model-registry.svc.cluster.local:9000",
+    "insecure": "true",
+    "region": "us-south",
+    "bucket": "model-registry-bucket"
+}

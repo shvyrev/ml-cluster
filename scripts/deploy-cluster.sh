@@ -334,6 +334,41 @@ check_services() {
     log "Все сервисы готовы к работе"
 }
 
+# Функция для пропатчивания Secret'а
+patch_modelmesh_serving() {
+    log "Начинаем патчить Secret 'storage-config' для modelmesh-serving..."
+
+    # 1. Получаем учетные данные MinIO из Secret'а
+    local access_key=$(kubectl get secret model-registry-secrets -n "$NAMESPACE" -o jsonpath="{.data.MINIO_ACCESS_KEY}" | base64 --decode)
+    local secret_key=$(kubectl get secret model-registry-secrets -n "$NAMESPACE" -o jsonpath="{.data.MINIO_SECRET_KEY}" | base64 --decode)
+
+    if [ -z "$access_key" ] || [ -z "$secret_key" ]; then
+        error "Не удалось получить учетные данные MinIO. Проверьте Secret 'model-registry-secrets'."
+        exit 1
+    fi
+
+    # 2. Создаем JSON-конфигурацию для ModelMesh
+    local minio_config_json=$(jq -n \
+        --arg access_key "$access_key" \
+        --arg secret_key "$secret_key" \
+        '{
+            "type": "s3",
+            "access_key_id": $access_key,
+            "secret_access_key": $secret_key,
+            "endpoint_url": "http://minio.model-registry.svc.cluster.local:9000",
+            "insecure": "true",
+            "region": "us-south",
+            "bucket": "model-registry-bucket"
+        }')
+
+    # 3. Кодируем JSON в base64
+    local new_minio_config=$(echo -n "$minio_config_json" | base64 -w 0)
+
+    # 4. Патчим Secret
+    kubectl patch secret storage-config -n modelmesh-serving --type=json -p='[{"op": "replace", "path": "/data/localMinIO", "value":"'"$new_minio_config"'"}]'
+    log "Secret 'storage-config' успешно пропатчен."
+}}
+
 show_cluster_info() {
     log "Информация о кластере:"
     echo ""
@@ -377,6 +412,8 @@ main() {
     deploy_artifact_store
     
     install_modelmesh
+    patch_modelmesh_serving
+
     check_services
     show_cluster_info
     

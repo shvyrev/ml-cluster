@@ -1,0 +1,86 @@
+#!/bin/bash
+
+# --- Configuration ---
+CLUSTER_NAME="ml-cluster"
+RESOURCE_MANAGER_REPO="git@github.com:shvyrev/resource-manager.git"
+RESOURCE_MANAGER_BRANCH="dev"
+RESOURCE_MANAGER_DIR="resource-manager"
+RESOURCE_MANAGER_IMAGE="resource-manager:1.0.0"
+
+MODEL_REGISTRY_REPO="git@github.com:shvyrev/ml-platform.git"
+MODEL_REGISTRY_BRANCH="AIPLT-49"
+MODEL_REGISTRY_DIR="ml-platform"
+MODEL_REGISTRY_IMAGE="model-registry:1.0.0"
+
+ARTIFACT_STORE_REPO="git@github.com:shvyrev/artifact-store.git"
+ARTIFACT_STORE_BRANCH="AIPLT-49"
+ARTIFACT_STORE_DIR="artifact-store"
+ARTIFACT_STORE_IMAGE="artifact-store:1.0.0"
+
+# --- Functions ---
+log() {
+    echo -e "\033[0;32m[INFO]\033[0m $1"
+}
+
+error() {
+    echo -e "\033[0;31m[ERROR]\033[0m $1"
+    exit 1
+}
+
+update_service() {
+    local repo="$1"
+    local branch="$2"
+    local dir="$3"
+    local image="$4"
+    local deployment_name="$5"
+    local namespace="$6"
+
+    log "Starting update for $deployment_name..."
+
+    log "Cleaning up old build directory..."
+    if [ -d "$dir" ]; then
+        rm -rf "$dir"
+    fi
+
+    log "Cloning the latest version of $repo..."
+    git clone --branch "$branch" "$repo" || error "Failed to clone repository."
+
+    log "Building new Docker image for $deployment_name..."
+    cd "$dir" || error "Failed to change directory."
+    mvn clean package -DskipTests || error "Maven build failed."
+    docker build -f src/main/docker/Dockerfile.jvm -t "$image" . || error "Docker build failed."
+    cd ..
+
+    log "Importing the new image into the k3d cluster..."
+    k3d image import "$image" -c "$CLUSTER_NAME" || error "Failed to import image into cluster."
+
+    log "Applying updated Kubernetes manifests for $deployment_name..."
+    kubectl apply -f "$dir/k3s/" || error "Failed to apply Kubernetes manifests."
+
+    log "Waiting for $deployment_name pods to become ready..."
+    kubectl rollout status deployment/"$deployment_name" -n "$namespace" --timeout=300s || error "Timeout waiting for rollout to complete."
+
+    log "$deployment_name has been successfully updated! ✨"
+}
+
+# --- Main Logic ---
+case "$1" in
+    resource-manager)
+        update_service "$RESOURCE_MANAGER_REPO" "$RESOURCE_MANAGER_BRANCH" "$RESOURCE_MANAGER_DIR" "$RESOURCE_MANAGER_IMAGE" "resource-manager-quarkus" "resource-manager"
+        ;;
+    model-registry)
+        update_service "$MODEL_REGISTRY_REPO" "$MODEL_REGISTRY_BRANCH" "$MODEL_REGISTRY_DIR" "$MODEL_REGISTRY_IMAGE" "model-registry-quarkus" "model-registry"
+        ;;
+    artifact-store)
+        update_service "$ARTIFACT_STORE_REPO" "$ARTIFACT_STORE_BRANCH" "$ARTIFACT_STORE_DIR" "$ARTIFACT_STORE_IMAGE" "artifact-store-quarkus" "artifact-store"
+        ;;
+    all)
+        update_service "$RESOURCE_MANAGER_REPO" "$RESOURCE_MANAGER_BRANCH" "$RESOURCE_MANAGER_DIR" "$RESOURCE_MANAGER_IMAGE" "resource-manager-quarkus" "resource-manager"
+        update_service "$MODEL_REGISTRY_REPO" "$MODEL_REGISTRY_BRANCH" "$MODEL_REGISTRY_DIR" "$MODEL_REGISTRY_IMAGE" "model-registry-quarkus" "model-registry"
+        update_service "$ARTIFACT_STORE_REPO" "$ARTIFACT_STORE_BRANCH" "$ARTIFACT_STORE_DIR" "$ARTIFACT_STORE_IMAGE" "artifact-store-quarkus" "artifact-store"
+        ;;
+    *)
+        echo "Usage: $0 {resource-manager|model-registry|artifact-store|all}"
+        exit 1
+        ;;
+esac
