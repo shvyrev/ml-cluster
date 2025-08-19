@@ -367,7 +367,7 @@ patch_modelmesh_serving() {
     # 4. Патчим Secret
     kubectl patch secret storage-config -n modelmesh-serving --type=json -p='[{"op": "replace", "path": "/data/localMinIO", "value":"'"$new_minio_config"'"}]'
     log "Secret 'storage-config' успешно пропатчен."
-}}
+}
 
 show_cluster_info() {
     log "Информация о кластере:"
