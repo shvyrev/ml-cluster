@@ -60,24 +60,40 @@ update_service() {
     log "Waiting for $deployment_name pods to become ready..."
     kubectl rollout status deployment/"$deployment_name" -n "$namespace" --timeout=300s || error "Timeout waiting for rollout to complete."
 
+    PODS=$(kubectl -n $namespace get pods -l "app=$deployment_name" -o name)
+
+    # Проверяем, найдены ли поды
+    if [ -z "$PODS" ]; then
+        log "Поды с меткой 'app=$deployment_name' не найдены. Выход."
+    else
+        log "Найдены следующие поды:"
+        echo "$PODS"
+        
+        # Удаляем найденные поды
+        log "Удаляем найденные поды..."
+        kubectl delete -n $namespace "$PODS" || error "Не удалось удалить поды."
+        
+        log "Все поды успешно удалены! ✨"
+    fi
+
     log "$deployment_name has been successfully updated! ✨"
 }
 
 # --- Main Logic ---
 case "$1" in
     resource-manager)
-        update_service "$RESOURCE_MANAGER_REPO" "$RESOURCE_MANAGER_BRANCH" "$RESOURCE_MANAGER_DIR" "$RESOURCE_MANAGER_IMAGE" "resource-manager-quarkus" "resource-manager"
+        update_service "$RESOURCE_MANAGER_REPO" "$RESOURCE_MANAGER_BRANCH" "$RESOURCE_MANAGER_DIR" "$RESOURCE_MANAGER_IMAGE" "resource-manager" "resource-manager"
         ;;
     model-registry)
-        update_service "$MODEL_REGISTRY_REPO" "$MODEL_REGISTRY_BRANCH" "$MODEL_REGISTRY_DIR" "$MODEL_REGISTRY_IMAGE" "model-registry-quarkus" "model-registry"
+        update_service "$MODEL_REGISTRY_REPO" "$MODEL_REGISTRY_BRANCH" "$MODEL_REGISTRY_DIR" "$MODEL_REGISTRY_IMAGE" "model-registry" "model-registry"
         ;;
     artifact-store)
-        update_service "$ARTIFACT_STORE_REPO" "$ARTIFACT_STORE_BRANCH" "$ARTIFACT_STORE_DIR" "$ARTIFACT_STORE_IMAGE" "artifact-store-quarkus" "artifact-store"
+        update_service "$ARTIFACT_STORE_REPO" "$ARTIFACT_STORE_BRANCH" "$ARTIFACT_STORE_DIR" "$ARTIFACT_STORE_IMAGE" "artifact-store" "artifact-store"
         ;;
     all)
-        update_service "$RESOURCE_MANAGER_REPO" "$RESOURCE_MANAGER_BRANCH" "$RESOURCE_MANAGER_DIR" "$RESOURCE_MANAGER_IMAGE" "resource-manager-quarkus" "resource-manager"
-        update_service "$MODEL_REGISTRY_REPO" "$MODEL_REGISTRY_BRANCH" "$MODEL_REGISTRY_DIR" "$MODEL_REGISTRY_IMAGE" "model-registry-quarkus" "model-registry"
-        update_service "$ARTIFACT_STORE_REPO" "$ARTIFACT_STORE_BRANCH" "$ARTIFACT_STORE_DIR" "$ARTIFACT_STORE_IMAGE" "artifact-store-quarkus" "artifact-store"
+        update_service "$RESOURCE_MANAGER_REPO" "$RESOURCE_MANAGER_BRANCH" "$RESOURCE_MANAGER_DIR" "$RESOURCE_MANAGER_IMAGE" "resource-manager" "resource-manager"
+        update_service "$MODEL_REGISTRY_REPO" "$MODEL_REGISTRY_BRANCH" "$MODEL_REGISTRY_DIR" "$MODEL_REGISTRY_IMAGE" "model-registry" "model-registry"
+        update_service "$ARTIFACT_STORE_REPO" "$ARTIFACT_STORE_BRANCH" "$ARTIFACT_STORE_DIR" "$ARTIFACT_STORE_IMAGE" "artifact-store" "artifact-store"
         ;;
     *)
         echo "Usage: $0 {resource-manager|model-registry|artifact-store|all}"
