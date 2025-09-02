@@ -2,17 +2,17 @@
 
 # --- Configuration ---
 CLUSTER_NAME="ml-cluster"
-RESOURCE_MANAGER_REPO="git@github.com:shvyrev/resource-manager.git"
+RESOURCE_MANAGER_REPO="git@gitlab.cldx.io:ai-ml/platform-core/cx-resource-manager.git"
 RESOURCE_MANAGER_BRANCH="dev"
 RESOURCE_MANAGER_DIR="resource-manager"
 RESOURCE_MANAGER_IMAGE="resource-manager:1.0.0"
 
-MODEL_REGISTRY_REPO="git@github.com:shvyrev/ml-platform.git"
+MODEL_REGISTRY_REPO="git@gitlab.cldx.io:ai-ml/platform-core/cx-serving.git"
 MODEL_REGISTRY_BRANCH="AIPLT-49"
 MODEL_REGISTRY_DIR="ml-platform"
 MODEL_REGISTRY_IMAGE="model-registry:1.0.0"
 
-ARTIFACT_STORE_REPO="git@github.com:shvyrev/artifact-store.git"
+ARTIFACT_STORE_REPO="git@gitlab.cldx.io:ai-ml/platform-core/cx-artifact-store.git"
 ARTIFACT_STORE_BRANCH="AIPLT-49"
 ARTIFACT_STORE_DIR="artifact-store"
 ARTIFACT_STORE_IMAGE="artifact-store:1.0.0"

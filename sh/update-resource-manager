@@ -1,7 +1,7 @@
 #!/bin/bash
 
 # --- Configuration ---
-RESOURCE_MANAGER_REPO="git@github.com:shvyrev/resource-manager.git"
+RESOURCE_MANAGER_REPO="git@gitlab.cldx.io:ai-ml/platform-core/cx-resource-manager.git"
 RESOURCE_MANAGER_BRANCH="dev"
 RESOURCE_MANAGER_DIR="resource-manager"
 RESOURCE_MANAGER_IMAGE="resource-manager:1.0.0"
