@@ -83,6 +83,28 @@ kubectl apply -f k8s/templates/java-service-1.yaml
 ./cluster.sh services status
 ```
 
+### 3. Настройка hosts
+```properties
+...
+
+127.0.0.1 keycloak.local
+127.0.0.1 registry.local
+127.0.0.1 minio.local
+127.0.0.1 predict.local
+127.0.0.1 example.com
+127.0.0.1 nginx.local
+127.0.0.1 resource-manager.local
+127.0.0.1 model-registry.local
+127.0.0.1 artifact-store.local
+127.0.0.1 keycloak
+
+...
+```
+### 4. Настройка Keycloak
+1. Keycloak Dashboard - http://keycloak.local
+2. Manage Realms - [v] model-registry-realm
+3. Realm Settings -> General -> Frontend URL -> http://keycloak:8080/ -> [Save]
+
 ## 🛑 Остановка и очистка
 
 ```bash

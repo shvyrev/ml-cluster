@@ -59,8 +59,12 @@ data:
       "roles": {
         "realm": [
           {
-            "name": "admin",
-            "description": "Administrator role"
+            "name": "data-scientist",
+            "description": "Data Scientist role"
+          },
+          {
+            "name": "system-administrator",
+            "description": "System Administrator role"
           },
           {
             "name": "user",
@@ -74,7 +78,7 @@ data:
           "enabled": true,
           "email": "alice@example.com",
           "firstName": "Alice",
-          "lastName": "Admin",
+          "lastName": "DataScientist",
           "credentials": [
             {
               "type": "password",
@@ -82,7 +86,37 @@ data:
               "temporary": false
             }
           ],
-          "realmRoles": ["admin"]
+          "realmRoles": ["data-scientist"]
+        },
+        {
+          "username": "bob",
+          "enabled": true,
+          "email": "bob@example.com",
+          "firstName": "Bob",
+          "lastName": "SystemAdministrator",
+          "credentials": [
+            {
+              "type": "password",
+              "value": "bob",
+              "temporary": false
+            }
+          ],
+          "realmRoles": ["system-administrator"]
+        },
+        {
+          "username": "carol",
+          "enabled": true,
+          "email": "carol@example.com",
+          "firstName": "Carol",
+          "lastName": "User",
+          "credentials": [
+            {
+              "type": "password",
+              "value": "carol",
+              "temporary": false
+            }
+          ],
+          "realmRoles": ["user"]
         }
       ]
     }
