@@ -70,6 +70,7 @@ show_help() {
     echo "  port-forward postgres         - Прокинуть порт PostgreSQL (5432)"
     echo "  port-forward minio            - Прокинуть порт MinIO UI (9001)"
     echo "  port-forward keycloak         - Прокинуть порт Keycloak (8082)"
+    echo "  port-forward artifact-store   - Прокинуть порты всех сервисов artifact-store"
     echo "  shell                         - Открыть shell в контейнере"
     echo "  help                          - Показать эту справку"
     echo ""
@@ -79,6 +80,7 @@ show_help() {
     echo "  $0 services build java-service-1  # Собрать и загрузить образ"
     echo "  $0 port-forward postgres      # Прокинуть порт PostgreSQL"
     echo "  $0 port-forward keycloak      # Прокинуть порт Keycloak"
+    echo "  $0 port-forward artifact-store # Прокинуть порты всех сервисов artifact-store"
     echo "  $0 status                     # Показать статус кластера"
 }
 
@@ -88,21 +90,234 @@ port_forward() {
     
     case "$service" in
         "postgres")
+            # Проверяем доступность кластера
+            if ! kubectl cluster-info &> /dev/null; then
+                error "Kubernetes кластер недоступен. Убедитесь, что кластер запущен:"
+                echo "  $0 start    # Запустить кластер"
+                echo "  $0 status   # Показать статус кластера"
+                exit 1
+            fi
+            
+            # Проверяем существование namespace
+            if ! kubectl get namespace model-registry &> /dev/null; then
+                error "Namespace 'model-registry' не найден. Возможно, сервисы не развернуты."
+                echo "  $0 services deploy   # Развернуть сервисы"
+                exit 1
+            fi
+            
+            # Проверяем существование сервиса postgres
+            if ! kubectl get svc postgres -n model-registry &> /dev/null; then
+                error "Сервис 'postgres' не найден в namespace 'model-registry'"
+                echo "  kubectl get svc -n model-registry   # Показать доступные сервисы"
+                exit 1
+            fi
+            
             log "Проброс порта PostgreSQL на localhost:5432"
-            kubectl port-forward -n model-registry svc/postgres 5432:5432
+            
+            # Запускаем порт-форвардинг
+            kubectl port-forward -n model-registry svc/postgres 5432:5432 &
+            POSTGRES_PID=$!
+            
+            # Проверяем, что процесс запустился успешно
+            if ! kill -0 $POSTGRES_PID 2>/dev/null; then
+                error "Не удалось запустить порт-форвардинг для PostgreSQL"
+                exit 1
+            fi
+            
+            # Выводим информацию о подключении
+            echo ""
+            echo "🔗 Подключение к PostgreSQL:"
+            echo "PostgreSQL:        localhost:5432"
+            echo ""
+            echo "📋 Учетные данные (по умолчанию):"
+            echo "Username:          admin"
+            echo "Password:          password"
+            echo "Database:          model_registry_db"
+            echo ""
+            echo "🛑 Чтобы остановить проброс портов — нажмите Ctrl+C"
+            
+            # Обработка прерывания для корректного завершения процесса
+            trap 'kill $POSTGRES_PID; exit' INT
+            wait
             ;;
         "minio")
-            log "Проброс порта MinIO UI на localhost:9001"
-            kubectl port-forward -n model-registry svc/minio 9001:9001
-            kubectl port-forward -n model-registry svc/minio 9000:9000
+            # Проверяем доступность кластера
+            if ! kubectl cluster-info &> /dev/null; then
+                error "Kubernetes кластер недоступен. Убедитесь, что кластер запущен:"
+                echo "  $0 start    # Запустить кластер"
+                echo "  $0 status   # Показать статус кластера"
+                exit 1
+            fi
+            
+            # Проверяем существование namespace
+            if ! kubectl get namespace model-registry &> /dev/null; then
+                error "Namespace 'model-registry' не найден. Возможно, сервисы не развернуты."
+                echo "  $0 services deploy   # Развернуть сервисы"
+                exit 1
+            fi
+            
+            # Проверяем существование сервиса minio
+            if ! kubectl get svc minio -n model-registry &> /dev/null; then
+                error "Сервис 'minio' не найден в namespace 'model-registry'"
+                echo "  kubectl get svc -n model-registry   # Показать доступные сервисы"
+                exit 1
+            fi
+            
+            log "Проброс портов MinIO UI на localhost:9001 и MinIO API на localhost:9000"
+            
+            # Запускаем порт-форвардинг
+            kubectl port-forward -n model-registry svc/minio 9001:9001 &
+            MINIO_CONSOLE_PID=$!
+            
+            kubectl port-forward -n model-registry svc/minio 9000:9000 &
+            MINIO_API_PID=$!
+            
+            # Проверяем, что процессы запустились успешно
+            if ! kill -0 $MINIO_CONSOLE_PID 2>/dev/null || ! kill -0 $MINIO_API_PID 2>/dev/null; then
+                error "Не удалось запустить порт-форвардинг для MinIO"
+                kill $MINIO_CONSOLE_PID $MINIO_API_PID 2>/dev/null || true
+                exit 1
+            fi
+            
+            # Выводим информацию о подключении
+            echo ""
+            echo "🔗 Подключение к MinIO:"
+            echo "MinIO Console:     http://localhost:9001"
+            echo "MinIO API:         http://localhost:9000"
+            echo ""
+            echo "📋 Учетные данные (по умолчанию):"
+            echo "Access Key:        AKIAIOSFODNN7EXAMPLE"
+            echo "Secret Key:        wJalrXUtnFEMI/K7MDENG/bPxRfiCYEXAMPLEKEY"
+            echo ""
+            echo "🛑 Чтобы остановить проброс портов — нажмите Ctrl+C"
+            
+            # Обработка прерывания для корректного завершения процесса
+            trap 'kill $MINIO_CONSOLE_PID $MINIO_API_PID; exit' INT
+            wait
             ;;
         "keycloak")
+            # Проверяем доступность кластера
+            if ! kubectl cluster-info &> /dev/null; then
+                error "Kubernetes кластер недоступен. Убедитесь, что кластер запущен:"
+                echo "  $0 start    # Запустить кластер"
+                echo "  $0 status   # Показать статус кластера"
+                exit 1
+            fi
+            
+            # Проверяем существование namespace
+            if ! kubectl get namespace model-registry &> /dev/null; then
+                error "Namespace 'model-registry' не найден. Возможно, сервисы не развернуты."
+                echo "  $0 services deploy   # Развернуть сервисы"
+                exit 1
+            fi
+            
+            # Проверяем существование сервиса keycloak
+            if ! kubectl get svc keycloak -n model-registry &> /dev/null; then
+                error "Сервис 'keycloak' не найден в namespace 'model-registry'"
+                echo "  kubectl get svc -n model-registry   # Показать доступные сервисы"
+                exit 1
+            fi
+            
             log "Проброс порта Keycloak на localhost:8082"
-            kubectl port-forward -n model-registry svc/keycloak 8082:8080
+            
+            # Запускаем порт-форвардинг
+            kubectl port-forward -n model-registry svc/keycloak 8082:8080 &
+            KEYCLOAK_PID=$!
+            
+            # Проверяем, что процесс запустился успешно
+            if ! kill -0 $KEYCLOAK_PID 2>/dev/null; then
+                error "Не удалось запустить порт-форвардинг для Keycloak"
+                exit 1
+            fi
+            
+            # Выводим информацию о подключении
+            echo ""
+            echo "🔗 Подключение к Keycloak:"
+            echo "Keycloak UI:       http://localhost:8082"
+            echo ""
+            echo "📋 Учетные данные (по умолчанию):"
+            echo "Username:          admin"
+            echo "Password:          admin"
+            echo ""
+            echo "🛑 Чтобы остановить проброс портов — нажмите Ctrl+C"
+            
+            # Обработка прерывания для корректного завершения процесса
+            trap 'kill $KEYCLOAK_PID; exit' INT
+            wait
+            ;;
+        "artifact-store")
+            # Проверяем доступность кластера
+            if ! kubectl cluster-info &> /dev/null; then
+                error "Kubernetes кластер недоступен. Убедитесь, что кластер запущен:"
+                echo "  $0 start    # Запустить кластер"
+                echo "  $0 status   # Показать статус кластera"
+                exit 1
+            fi
+            
+            # Проверяем существование namespace
+            if ! kubectl get namespace artifact-store &> /dev/null; then
+                error "Namespace 'artifact-store' не найден. Возможно, сервисы не развернуты."
+                echo "  $0 services deploy   # Развернуть сервисы"
+                exit 1
+            fi
+            
+            log "Проброс портов всех сервисов artifact-store namespace"
+            log "PostgreSQL: localhost:5432, MinIO Console: localhost:9001, MinIO API: localhost:9000, Artifact Store: localhost:8080"
+            
+            # Запускаем порт-форвардинг всех сервисов в фоне
+            kubectl port-forward -n artifact-store svc/postgres 5432:5432 &
+            POSTGRES_PID=$!
+            
+            kubectl port-forward -n artifact-store svc/minio 9001:9001 &
+            MINIO_CONSOLE_PID=$!
+            
+            kubectl port-forward -n artifact-store svc/minio 9000:9000 &
+            MINIO_API_PID=$!
+            
+            kubectl port-forward -n artifact-store svc/artifact-store 8099:8080 &
+            ARTIFACT_STORE_PID=$!
+            
+            # Извлекаем credentials MinIO из secret
+            MINIO_ACCESS_KEY=""
+            MINIO_SECRET_KEY=""
+            
+            # Пытаемся получить credentials из secret
+            if kubectl get secret -n artifact-store artifact-store-secrets &> /dev/null; then
+                MINIO_ACCESS_KEY=$(kubectl get secret -n artifact-store artifact-store-secrets -o jsonpath='{.data.MINIO_ACCESS_KEY}' | base64 -d 2>/dev/null || echo "")
+                MINIO_SECRET_KEY=$(kubectl get secret -n artifact-store artifact-store-secrets -o jsonpath='{.data.MINIO_SECRET_KEY}' | base64 -d 2>/dev/null || echo "")
+            fi
+            
+            # Если не удалось получить credentials, используем значения по умолчанию
+            if [ -z "$MINIO_ACCESS_KEY" ]; then
+                MINIO_ACCESS_KEY="AKIAIOSFODNN7EXAMPLE"
+            fi
+            if [ -z "$MINIO_SECRET_KEY" ]; then
+                MINIO_SECRET_KEY="wJalrXUtnFEMI/K7MDENG/bPxRfiCYEXAMPLEKEY"
+            fi
+            
+            # Выводим информацию о подключениях
+            echo ""
+            echo "🔗 Подключения к сервисам artifact-store:"
+            echo "PostgreSQL:        localhost:5432"
+            echo "MinIO Console:     http://localhost:9001"
+            echo "MinIO API:         http://localhost:9000"
+            echo "Artifact Store:    http://localhost:8080"
+            echo ""
+            echo "📋 Учетные данные:"
+            echo "PostgreSQL: пользователь=admin, пароль=password, база=artifact_store_db"
+            echo "MinIO Endpoint:    http://localhost:9000"
+            echo "MinIO Access Key:  $MINIO_ACCESS_KEY"
+            echo "MinIO Secret Key:  $MINIO_SECRET_KEY"
+            echo ""
+            echo "🛑 Чтобы остановить проброс портов — нажмите Ctrl+C"
+            
+            # Обработка прерывания для корректного завершения всех процессов
+            trap 'kill $POSTGRES_PID $MINIO_CONSOLE_PID $MINIO_API_PID $ARTIFACT_STORE_PID; exit' INT
+            wait
             ;;
         *)
             error "Неизвестный сервис: $service"
-            echo "Доступные сервисы: postgres, minio, keycloak"
+            echo "Доступные сервисы: postgres, minio, keycloak, artifact-store"
             exit 1
             ;;
     esac
