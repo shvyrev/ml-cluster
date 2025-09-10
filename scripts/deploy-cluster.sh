@@ -164,6 +164,8 @@ deploy_core_manifests() {
     kubectl apply -f k8s/02-postgres.yaml
     kubectl apply -f k8s/03-minio.yaml
     kubectl apply -f k8s/04-keycloak.yaml
+    kubectl apply -f k8s/05-redpanda.yaml
+    kubectl apply -f k8s/06-redpanda-console.yaml
     kubectl apply -f ingress.yaml
     log "Основные манифесты применены."
 }
@@ -305,9 +307,19 @@ install_modelmesh() {
     log "Установка ModelMesh Serving..."
     log "Создание namespace для ModelMesh если не существует"
     kubectl create namespace "$MODELMESH_NAMESPACE" --dry-run=client -o yaml | kubectl apply -f -
-    cd modelmesh-serving
-    ./scripts/install.sh --namespace "$MODELMESH_NAMESPACE" --quickstart --enable-self-signed-ca
-    cd ..
+    
+    # Проверяем существование директории modelmesh-serving
+    if [ -d "modelmesh-serving" ]; then
+        cd modelmesh-serving
+        if [ -f "./scripts/install.sh" ]; then
+            ./scripts/install.sh --namespace "$MODELMESH_NAMESPACE" --quickstart --enable-self-signed-ca
+        else
+            warn "Скрипт install.sh не найден в modelmesh-serving/scripts/, пропускаем установку ModelMesh"
+        fi
+        cd ..
+    else
+        warn "Директория modelmesh-serving не найдена, пропускаем установку ModelMesh"
+    fi
     log "ModelMesh Serving установлен"
 }
 
@@ -326,6 +338,13 @@ check_services() {
         warn "Keycloak не готов после 300 секунд ожидания, но развертывание продолжается"
     else
         log "Keycloak готов к работе"
+    fi
+    
+    log "Проверка готовности RedPanda..."
+    if ! kubectl wait --for=condition=ready pod -n "$NAMESPACE" -l app=redpanda --timeout=300s; then
+        warn "RedPanda не готов после 300 секунд ожидания, но развертывание продолжается"
+    else
+        log "RedPanda готов к работе"
     fi
     
     # Дополнительная проверка готовности сервисов artifact-store
@@ -379,7 +398,10 @@ show_cluster_info() {
     echo "- PostgreSQL: kubectl port-forward -n $NAMESPACE svc/postgres 5432:5432"
     echo "- MinIO UI: kubectl port-forward -n $NAMESPACE svc/minio 9001:9001"
     echo "- Keycloak: kubectl port-forward -n $NAMESPACE svc/keycloak 8082:8080"
-    echo "  * Админка: http://localhost:8082/admin (admin/admin)"
+    echo "- RedPanda Console: http://kafka.local"
+    echo "  * Kafka Broker: redpanda.model-registry.svc.cluster.local:9092"
+    echo "  * Admin API: порт 9644"
+    echo "  * Админка Keycloak: http://localhost:8082/admin (admin/admin)"
     echo "  * Realm: model-registry-realm"
     echo "  * Пользователь: alice/alice"
     echo ""

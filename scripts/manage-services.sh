@@ -172,6 +172,10 @@ spec:
             secretKeyRef:
               name: model-registry-secrets
               key: MINIO_SECRET_KEY
+        - name: KAFKA_BOOTSTRAP_SERVERS
+          value: "redpanda.model-registry.svc.cluster.local:9092"
+        - name: KAFKA_SCHEMA_REGISTRY_URL
+          value: "http://redpanda.model-registry.svc.cluster.local:8081"
         livenessProbe:
           httpGet:
             path: /actuator/health
@@ -304,6 +308,11 @@ show_services_status() {
     echo "- Service 1: http://localhost/api/v1/service1"
     echo "- Service 2: http://localhost/api/v1/service2"
     echo "- Service 3: http://localhost/api/v1/service3"
+    echo ""
+    echo "RedPanda Kafka:"
+    echo "- Bootstrap Servers: redpanda.model-registry.svc.cluster.local:9092"
+    echo "- Console UI: http://kafka.local"
+    echo "- Schema Registry: http://redpanda.model-registry.svc.cluster.local:8081"
 }
 
 # Показать помощь
