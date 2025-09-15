@@ -16,6 +16,9 @@ data:
         - address: 0.0.0.0
           port: 9092
           name: internal
+        - address: 0.0.0.0
+          port: 9092
+          name: external
       admin:
         - address: 0.0.0.0
           port: 9644
@@ -59,12 +62,14 @@ spec:
           --memory 1G \
           --reserve-memory 0M \
           --node-id ${HOSTNAME##*-} \
-          --kafka-addr PLAINTEXT://0.0.0.0:9092 \
-          --advertise-kafka-addr PLAINTEXT://redpanda-${HOSTNAME##*-}.redpanda.model-registry.svc.cluster.local:9092 \
+          --kafka-addr PLAINTEXT_INTERNAL://0.0.0.0:9092,PLAINTEXT_EXTERNAL://0.0.0.0:9093 \
+          --advertise-kafka-addr PLAINTEXT_INTERNAL://redpanda-${HOSTNAME##*-}.redpanda.model-registry.svc.cluster.local:9092,PLAINTEXT_EXTERNAL://localhost:9093 \
           --advertise-rpc-addr redpanda-${HOSTNAME##*-}.redpanda.model-registry.svc.cluster.local:33145
         ports:
         - containerPort: 9092
-          name: kafka
+          name: kafka-internal
+        - containerPort: 9093
+          name: kafka-external
         - containerPort: 9644
           name: admin
         - containerPort: 33145
@@ -125,9 +130,12 @@ spec:
   selector:
     app: redpanda
   ports:
-  - name: kafka
+  - name: kafka-internal
     port: 9092
     targetPort: 9092
+  - name: kafka-external
+    port: 9093
+    targetPort: 9093
   - name: admin
     port: 9644
     targetPort: 9644
@@ -146,7 +154,7 @@ spec:
   selector:
     app: redpanda
   ports:
-  - name: kafka
-    port: 9092
-    targetPort: 9092
-  type: ClusterIP
+  - name: kafka-external
+    port: 9093
+    targetPort: 9093
+  type: LoadBalancer

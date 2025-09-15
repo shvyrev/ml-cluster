@@ -82,6 +82,7 @@ create_cluster() {
         --servers 2 \
         --agents 2 \
         --port 80:80@loadbalancer \
+        --port 9093:9093@loadbalancer \
         --wait
     log "Кластер $CLUSTER_NAME создан"
 }
@@ -393,13 +394,15 @@ show_cluster_info() {
     echo ""
     echo "Кластер: $CLUSTER_NAME"
     echo "Loadbalancer: http://localhost:80"
+    echo "Kafka Broker (внешний доступ): localhost:9093"
     echo ""
     echo "Доступные сервисы:"
     echo "- PostgreSQL: kubectl port-forward -n $NAMESPACE svc/postgres 5432:5432"
     echo "- MinIO UI: kubectl port-forward -n $NAMESPACE svc/minio 9001:9001"
     echo "- Keycloak: kubectl port-forward -n $NAMESPACE svc/keycloak 8082:8080"
     echo "- RedPanda Console: http://kafka.local"
-    echo "  * Kafka Broker: redpanda.model-registry.svc.cluster.local:9092"
+    echo "  * Kafka Broker (внешний доступ): localhost:9093"
+    echo "  * Kafka Broker (внутри кластера): redpanda.model-registry.svc.cluster.local:9092"
     echo "  * Admin API: порт 9644"
     echo "  * Админка Keycloak: http://localhost:8082/admin (admin/admin)"
     echo "  * Realm: model-registry-realm"

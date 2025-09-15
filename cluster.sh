@@ -71,6 +71,7 @@ show_help() {
     echo "  port-forward minio            - Прокинуть порт MinIO UI (9001)"
     echo "  port-forward keycloak         - Прокинуть порт Keycloak (8082)"
     echo "  port-forward artifact-store   - Прокинуть порты всех сервисов artifact-store"
+    echo "  port-forward redpanda         - Прокинуть порт Redpanda/Kafka (9092)"
     echo "  shell                         - Открыть shell в контейнере"
     echo "  help                          - Показать эту справку"
     echo ""
@@ -81,6 +82,7 @@ show_help() {
     echo "  $0 port-forward postgres      # Прокинуть порт PostgreSQL"
     echo "  $0 port-forward keycloak      # Прокинуть порт Keycloak"
     echo "  $0 port-forward artifact-store # Прокинуть порты всех сервисов artifact-store"
+    echo "  $0 port-forward redpanda      # Прокинуть порт Redpanda/Kafka"
     echo "  $0 status                     # Показать статус кластера"
 }
 
@@ -315,9 +317,58 @@ port_forward() {
             trap 'kill $POSTGRES_PID $MINIO_CONSOLE_PID $MINIO_API_PID $ARTIFACT_STORE_PID; exit' INT
             wait
             ;;
+        "redpanda")
+            # Проверяем доступность кластера
+            if ! kubectl cluster-info &> /dev/null; then
+                error "Kubernetes кластер недоступен. Убедитесь, что кластер запущен:"
+                echo "  $0 start    # Запустить кластер"
+                echo "  $0 status   # Показать статус кластера"
+                exit 1
+            fi
+            
+            # Проверяем существование namespace
+            if ! kubectl get namespace model-registry &> /dev/null; then
+                error "Namespace 'model-registry' не найден. Возможно, сервисы не развернуты."
+                echo "  $0 services deploy   # Развернуть сервисы"
+                exit 1
+            fi
+            
+            # Проверяем существование сервиса redpanda-external
+            if ! kubectl get svc redpanda-external -n model-registry &> /dev/null; then
+                error "Сервис 'redpanda-external' не найден в namespace 'model-registry'"
+                echo "  kubectl get svc -n model-registry   # Показать доступные сервисы"
+                exit 1
+            fi
+            
+            log "Проброс порта Redpanda/Kafka на localhost:9092"
+            
+            # Запускаем порт-форвардинг
+            kubectl port-forward -n model-registry svc/redpanda-external 9092:9092 &
+            REDPANDA_PID=$!
+            
+            # Проверяем, что процесс запустился успешно
+            if ! kill -0 $REDPANDA_PID 2>/dev/null; then
+                error "Не удалось запустить порт-форвардинг для Redpanda"
+                exit 1
+            fi
+            
+            # Выводим информацию о подключении
+            echo ""
+            echo "🔗 Подключение к Redpanda/Kafka:"
+            echo "Kafka Bootstrap:   localhost:9092"
+            echo ""
+            echo "📋 Использование в Java-приложении:"
+            echo "bootstrap.servers=localhost:9092"
+            echo ""
+            echo "🛑 Чтобы остановить проброс портов — нажмите Ctrl+C"
+            
+            # Обработка прерывания для корректного завершения процесса
+            trap 'kill $REDPANDA_PID; exit' INT
+            wait
+            ;;
         *)
             error "Неизвестный сервис: $service"
-            echo "Доступные сервисы: postgres, minio, keycloak, artifact-store"
+            echo "Доступные сервисы: postgres, minio, keycloak, artifact-store, redpanda"
             exit 1
             ;;
     esac

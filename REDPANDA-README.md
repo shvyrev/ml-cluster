@@ -14,7 +14,8 @@ KAFKA_SCHEMA_REGISTRY_URL=http://redpanda.model-registry.svc.cluster.local:8081
 
 **Внешний доступ (для администрирования):**
 - RedPanda Console: http://kafka.local
-- Kafka Broker: redpanda.model-registry.svc.cluster.local:9092
+- Kafka Broker: localhost:9092 (прямой доступ через k3d)
+- Kafka Broker (внутри кластера): redpanda.model-registry.svc.cluster.local:9092
 - Admin API: порт 9644
 
 ### Проверка работы RedPanda
