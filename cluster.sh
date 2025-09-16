@@ -317,6 +317,76 @@ port_forward() {
             trap 'kill $POSTGRES_PID $MINIO_CONSOLE_PID $MINIO_API_PID $ARTIFACT_STORE_PID; exit' INT
             wait
             ;;
+        "model-registry")
+            # Проверяем доступность кластера
+            if ! kubectl cluster-info &> /dev/null; then
+                error "Kubernetes кластер недоступен. Убедитесь, что кластер запущен:"
+                echo "  $0 start    # Запустить кластер"
+                echo "  $0 status   # Показать статус кластera"
+                exit 1
+            fi
+            
+            # Проверяем существование namespace
+            if ! kubectl get namespace model-registry &> /dev/null; then
+                error "Namespace 'model-registry' не найден. Возможно, сервисы не развернуты."
+                echo "  $0 services deploy   # Развернуть сервисы"
+                exit 1
+            fi
+            
+            log "Проброс портов всех сервисов model-registry namespace"
+            log "PostgreSQL: localhost:5432, MinIO Console: localhost:9001, MinIO API: localhost:9000, Artifact Store: localhost:8080"
+            
+            # Запускаем порт-форвардинг всех сервисов в фоне
+            kubectl port-forward -n model-registry svc/postgres 5432:5432 &
+            POSTGRES_PID=$!
+            
+            kubectl port-forward -n artifact-store svc/minio 9001:9001 &
+            MINIO_CONSOLE_PID=$!
+            
+            kubectl port-forward -n artifact-store svc/minio 9000:9000 &
+            MINIO_API_PID=$!
+            
+            kubectl port-forward -n model-registry svc/model-registry 8099:8080 &
+            ARTIFACT_STORE_PID=$!
+            
+            # Извлекаем credentials MinIO из secret
+            MINIO_ACCESS_KEY=""
+            MINIO_SECRET_KEY=""
+            
+            # Пытаемся получить credentials из secret
+            if kubectl get secret -n artifact-store artifact-store-secrets &> /dev/null; then
+                MINIO_ACCESS_KEY=$(kubectl get secret -n artifact-store artifact-store-secrets -o jsonpath='{.data.MINIO_ACCESS_KEY}' | base64 -d 2>/dev/null || echo "")
+                MINIO_SECRET_KEY=$(kubectl get secret -n artifact-store artifact-store-secrets -o jsonpath='{.data.MINIO_SECRET_KEY}' | base64 -d 2>/dev/null || echo "")
+            fi
+            
+            # Если не удалось получить credentials, используем значения по умолчанию
+            if [ -z "$MINIO_ACCESS_KEY" ]; then
+                MINIO_ACCESS_KEY="AKIAIOSFODNN7EXAMPLE"
+            fi
+            if [ -z "$MINIO_SECRET_KEY" ]; then
+                MINIO_SECRET_KEY="wJalrXUtnFEMI/K7MDENG/bPxRfiCYEXAMPLEKEY"
+            fi
+            
+            # Выводим информацию о подключениях
+            echo ""
+            echo "🔗 Подключения к сервисам artifact-store:"
+            echo "PostgreSQL:        localhost:5432"
+            echo "MinIO Console:     http://localhost:9001"
+            echo "MinIO API:         http://localhost:9000"
+            echo "Model Registry:    http://localhost:8099"
+            echo ""
+            echo "📋 Учетные данные:"
+            echo "PostgreSQL: пользователь=admin, пароль=password, база=model_registry_db"
+            echo "MinIO Endpoint:    http://localhost:9000"
+            echo "MinIO Access Key:  $MINIO_ACCESS_KEY"
+            echo "MinIO Secret Key:  $MINIO_SECRET_KEY"
+            echo ""
+            echo "🛑 Чтобы остановить проброс портов — нажмите Ctrl+C"
+            
+            # Обработка прерывания для корректного завершения всех процессов
+            trap 'kill $POSTGRES_PID $MINIO_CONSOLE_PID $MINIO_API_PID $ARTIFACT_STORE_PID; exit' INT
+            wait
+            ;;
         "redpanda")
             # Проверяем доступность кластера
             if ! kubectl cluster-info &> /dev/null; then

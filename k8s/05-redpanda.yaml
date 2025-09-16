@@ -36,7 +36,7 @@ metadata:
     app: redpanda
 spec:
   serviceName: redpanda
-  replicas: 3
+  replicas: 1
   selector:
     matchLabels:
       app: redpanda
@@ -59,7 +59,7 @@ spec:
           --config /tmp/redpanda.yaml \
           --overprovisioned \
           --smp 1 \
-          --memory 1G \
+          --memory 2G \
           --reserve-memory 0M \
           --node-id ${HOSTNAME##*-} \
           --kafka-addr PLAINTEXT_INTERNAL://0.0.0.0:9092,PLAINTEXT_EXTERNAL://0.0.0.0:9093 \
@@ -81,11 +81,11 @@ spec:
           value: "ml-platform-redpanda-cluster"
         resources:
           requests:
-            memory: "2Gi"
-            cpu: "1000m"
-          limits:
             memory: "4Gi"
             cpu: "2000m"
+          limits:
+            memory: "8Gi"
+            cpu: "4000m"
         volumeMounts:
         - name: redpanda-data
           mountPath: /var/lib/redpanda/data
