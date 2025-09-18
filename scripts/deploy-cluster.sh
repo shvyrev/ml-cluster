@@ -354,6 +354,52 @@ check_services() {
     log "Все сервисы готовы к работе"
 }
 
+# Функция для создания топиков RedPanda
+create_redpanda_topics() {
+    log "Создание топиков RedPanda..."
+    
+    # Список топиков для создания
+    local topics=(
+        "endpoint.events"
+        "endpoint.events.cmd"
+        "endpoint.events.dlq"
+        "file.events"
+        "file.events.cmd"
+        "file.events.dlq"
+        "model.events"
+        "model.events.cmd"
+        "model.events.dlq"
+        "resource.events"
+        "resource.events.cmd"
+        "resource.events.dlq"
+    )
+    
+    # Ожидаем готовности RedPanda
+    log "Ожидание готовности RedPanda для создания топиков..."
+    if ! kubectl wait --for=condition=ready pod -n "$NAMESPACE" -l app=redpanda --timeout=120s; then
+        warn "RedPanda не готов после 120 секунд ожидания, пропускаем создание топиков"
+        return 1
+    fi
+    
+    # Создаем каждый топик
+    for topic in "${topics[@]}"; do
+        log "Проверка топика: $topic"
+        # Проверяем, существует ли топик
+        if kubectl exec -n "$NAMESPACE" redpanda-0 -- rpk topic list | grep -q "^$topic$"; then
+            log "Топик $topic уже существует, пропускаем создание"
+        else
+            log "Создание топика: $topic"
+            if kubectl exec -n "$NAMESPACE" redpanda-0 -- rpk topic create "$topic"; then
+                log "Топик $topic успешно создан"
+            else
+                warn "Не удалось создать топик $topic"
+            fi
+        fi
+    done
+    
+    log "Все топики RedPanda созданы"
+}
+
 # Функция для пропатчивания Secret'а
 patch_modelmesh_serving() {
     log "Начинаем патчить Secret 'storage-config' для modelmesh-serving..."
@@ -440,6 +486,7 @@ main() {
     patch_modelmesh_serving
 
     check_services
+    create_redpanda_topics
     show_cluster_info
     
     log "Развертывание завершено успешно!"

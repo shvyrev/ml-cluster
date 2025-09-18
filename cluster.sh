@@ -72,6 +72,7 @@ show_help() {
     echo "  port-forward keycloak         - Прокинуть порт Keycloak (8082)"
     echo "  port-forward artifact-store   - Прокинуть порты всех сервисов artifact-store"
     echo "  port-forward redpanda         - Прокинуть порт Redpanda/Kafka (9092)"
+    echo "  redpanda-topics [TOPICS...]   - Создать топики в RedPanda (если не указаны, создаст все стандартные)"
     echo "  shell                         - Открыть shell в контейнере"
     echo "  help                          - Показать эту справку"
     echo ""
@@ -444,6 +445,87 @@ port_forward() {
     esac
 }
 
+# Функция для создания топиков RedPanda
+create_redpanda_topics() {
+    local topics=("$@")
+    
+    # Проверяем доступность кластера
+    if ! kubectl cluster-info &> /dev/null; then
+        error "Kubernetes кластер недоступен. Убедитесь, что кластер запущен:"
+        echo "  $0 start    # Запустить кластер"
+        echo "  $0 status   # Показать статус кластера"
+        exit 1
+    fi
+    
+    # Проверяем существование namespace
+    if ! kubectl get namespace model-registry &> /dev/null; then
+        error "Namespace 'model-registry' не найден. Возможно, сервисы не развернуты."
+        echo "  $0 services deploy   # Развернуть сервисы"
+        exit 1
+    fi
+    
+    # Проверяем существование пода redpanda
+    if ! kubectl get pod redpanda-0 -n model-registry &> /dev/null; then
+        error "Пода 'redpanda-0' не найден в namespace 'model-registry'"
+        echo "  kubectl get pods -n model-registry   # Показать доступные поды"
+        exit 1
+    fi
+    
+    # Если топики не указаны, используем стандартные топики
+    if [ ${#topics[@]} -eq 0 ]; then
+        topics=(
+            "endpoint.events"
+            "endpoint.events.cmd"
+            "endpoint.events.dlq"
+            "file.events"
+            "file.events.cmd"
+            "file.events.dlq"
+            "model.events"
+            "model.events.cmd"
+            "model.events.dlq"
+            "resource.events"
+            "resource.events.cmd"
+            "resource.events.dlq"
+        )
+        log "Используются стандартные топики RedPanda"
+    fi
+    
+    log "Создание топиков RedPanda..."
+    
+    # Ожидаем готовности RedPanda
+    log "Ожидание готовности RedPanda..."
+    if ! kubectl wait --for=condition=ready pod -n model-registry redpanda-0 --timeout=120s; then
+        warn "RedPanda не готов после 120 секунд ожидания, но продолжаем попытку создания топиков"
+    fi
+    
+    # Создаем каждый топик
+    local success_count=0
+    local total_count=${#topics[@]}
+    
+    for topic in "${topics[@]}"; do
+        log "Проверка топика: $topic"
+        # Проверяем, существует ли топик
+        if kubectl exec -n model-registry redpanda-0 -- rpk topic list | grep -q "^$topic$"; then
+            log "Топик $topic уже существует, пропускаем создание"
+            ((success_count++))
+        else
+            log "Создание топика: $topic"
+            if kubectl exec -n model-registry redpanda-0 -- rpk topic create "$topic"; then
+                log "Топик $topic успешно создан"
+                ((success_count++))
+            else
+                warn "Не удалось создать топик $topic"
+            fi
+        fi
+    done
+    
+    if [ $success_count -eq $total_count ]; then
+        log "Все $success_count топиков успешно созданы"
+    else
+        warn "Создано $success_count из $total_count топиков"
+    fi
+}
+
 # Открыть shell в контейнере
 open_shell() {
     local pod_name="$1"
@@ -491,6 +573,10 @@ main() {
             ;;
         "port-forward")
             port_forward "$2"
+            ;;
+        "redpanda-topics")
+            shift
+            create_redpanda_topics "$@"
             ;;
         "shell")
             open_shell "$2" "$3"
