@@ -20,27 +20,104 @@ metadata:
   name: keycloak-realm-config
   namespace: keycloak-namespace
 data:
-  realm-config.json: |
+  realm.json: |
     {
-      "realm": "keycloak-realm",
+      "realm": "model-registry-realm",
       "enabled": true,
+      "sslRequired": "external",
+      "registrationAllowed": false,
+      "loginWithEmailAllowed": true,
+      "duplicateEmailsAllowed": false,
+      "resetPasswordAllowed": true,
+      "editUsernameAllowed": false,
+      "bruteForceProtected": true,
       "clients": [
         {
-          "clientId": "keycloak-app",
+          "clientId": "model-registry-app",
           "enabled": true,
+          "protocol": "openid-connect",
+          "publicClient": true,
           "secret": "LZbXY16jR0BRFazUKO3qTAoqXL3Uoet7",
-          "redirectUris": ["http://keycloak.local/*"],
-          "webOrigins": ["http://keycloak.local"]
+          "redirectUris": ["*"],
+          "webOrigins": ["*"],
+          "standardFlowEnabled": true,
+          "implicitFlowEnabled": false,
+          "directAccessGrantsEnabled": true,
+          "serviceAccountsEnabled": true,
+          "authorizationServicesEnabled": true,
+          "fullScopeAllowed": true,
+          "protocolMappers": [
+            {
+              "name": "audience-mapper",
+              "protocol": "openid-connect",
+              "protocolMapper": "oidc-audience-mapper",
+              "config": {
+                "included.client.audience": "model-registry-app",
+                "id.token.claim": "false",
+                "access.token.claim": "true"
+              }
+            }
+          ]
         }
       ],
+      "roles": {
+        "realm": [
+          {
+            "name": "data-scientist",
+            "description": "Data Scientist role"
+          },
+          {
+            "name": "system-administrator",
+            "description": "System Administrator role"
+          },
+          {
+            "name": "user",
+            "description": "Regular user role"
+          }
+        ]
+      },
       "users": [
         {
-          "username": "user",
+          "username": "alice",
           "enabled": true,
+          "email": "alice@example.com",
+          "firstName": "Alice",
+          "lastName": "DataScientist",
           "credentials": [
             {
               "type": "password",
-              "value": "password"
+              "value": "alice",
+              "temporary": false
+            }
+          ],
+          "realmRoles": ["data-scientist"]
+        },
+        {
+          "username": "bob",
+          "enabled": true,
+          "email": "bob@example.com",
+          "firstName": "Bob",
+          "lastName": "SystemAdministrator",
+          "credentials": [
+            {
+              "type": "password",
+              "value": "bob",
+              "temporary": false
+            }
+          ],
+          "realmRoles": ["system-administrator"]
+        },
+        {
+          "username": "carol",
+          "enabled": true,
+          "email": "carol@example.com",
+          "firstName": "Carol",
+          "lastName": "User",
+          "credentials": [
+            {
+              "type": "password",
+              "value": "carol",
+              "temporary": false
             }
           ],
           "realmRoles": ["user"]
@@ -123,7 +200,9 @@ spec:
           volumeMounts:
             - name: keycloak-storage
               mountPath: /opt/keycloak/data
-          args: ["start"]
+            - name: realm-config-volume
+              mountPath: /opt/keycloak/data/import
+          args: ["start", "--import-realm"]
           readinessProbe:
             httpGet:
               path: /realms/master
@@ -140,3 +219,6 @@ spec:
         - name: keycloak-storage
           persistentVolumeClaim:
             claimName: keycloak-pvc
+        - name: realm-config-volume
+          configMap:
+            name: keycloak-realm-config
