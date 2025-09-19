@@ -1,0 +1,33 @@
+apiVersion: networking.k8s.io/v1
+kind: Ingress
+metadata:
+  name: keycloak-ingress
+  namespace: keycloak-namespace
+  annotations:
+    traefik.ingress.kubernetes.io/router.entrypoints: web
+    traefik.ingress.kubernetes.io/router.middlewares: keycloak-namespace-keycloak-stripprefix@kubernetescrd
+spec:
+  ingressClassName: traefik
+  rules:
+    - host: keycloak.local
+      http:
+        paths:
+          - path: /
+            pathType: Prefix
+            backend:
+              service:
+                name: keycloak-service
+                port:
+                  number: 8080
+
+---
+# Middleware для удаления префикса пути (если нужно)
+apiVersion: traefik.containo.us/v1alpha1
+kind: Middleware
+metadata:
+  name: keycloak-stripprefix
+  namespace: keycloak-namespace
+spec:
+  stripPrefix:
+    prefixes:
+      - "/"

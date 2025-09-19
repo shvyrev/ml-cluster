@@ -1,0 +1,7 @@
+apiVersion: v1
+kind: Namespace
+metadata:
+  name: keycloak-namespace
+  labels:
+    name: keycloak-namespace
+    app: keycloak
